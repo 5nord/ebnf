@@ -24,3 +24,65 @@ Production names starting with an uppercase Unicode letter denote
 non-terminal productions (i.e., productions which allow white-space
 and comments between tokens); all other production names denote
 lexical productions.
+
+## Examples
+
+### Parsing
+
+```go
+package main
+
+import (
+	"bytes"
+	"fmt"
+
+	"github.com/5nord/ebnf"
+)
+
+func main() {
+	src := []byte(`
+		E ::= [ T E ].
+		T ::= "a"|"b" .
+	`)
+
+	g, err := ebnf.Parse("", bytes.NewBuffer(src))
+	if err != nil {
+		panic(err)
+	}
+
+	// ...
+}
+```
+
+## New Functions
+
+### First
+
+`ebnf.First` returns the first-set of the given production.
+
+```go
+	fmt.Println(ebnf.First(g, g["E"])) // Output: [a b]
+```
+
+### Text
+
+`ebnf.Text` returns the literal text of the given production.
+
+```go
+	fmt.Println(ebnf.Text(src, g["E"])) // Output: E := [ T E ].
+```
+
+### IsLexical
+
+`ebnf.Islexical` returns `true` if the given string is a terminal name.
+
+### Inspect
+
+`ebnf.Inspect` traverses the given expression and calls the given function for each.
+
+```go
+	ebnf.Inspect(g["E"], func(e ebnf.Expression) bool {
+		fmt.Printf("%T\n", e)
+		return true
+	})
+```
