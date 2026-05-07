@@ -86,3 +86,11 @@ func main() {
 		return true
 	})
 ```
+
+### Format
+
+`ebnf.Format` formats the grammar.
+
+```go
+fmt.Println(ebnf.Format(g))
+```

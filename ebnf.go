@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"sort"
 	"strings"
@@ -414,4 +415,84 @@ func Inspect(e Expression, fn func(e Expression) bool) bool {
 
 	}
 	return true
+}
+
+type printer struct {
+	w io.Writer
+	q []string
+}
+
+func (p *printer) format(e Expression) {
+	switch e := e.(type) {
+	case Alternative:
+		for i, e := range e {
+			if i > 0 {
+				fmt.Fprintf(p.w, " | ")
+			}
+			p.format(e)
+		}
+	case Sequence:
+		for i, e := range e {
+			if i > 0 {
+				fmt.Fprintf(p.w, " ")
+			}
+			p.format(e)
+		}
+	case *Name:
+		p.q = append(p.q, e.String)
+		fmt.Fprintf(p.w, "%s", e.String)
+	case *Token:
+		fmt.Fprintf(p.w, "%q", e.String)
+	case *Range:
+		fmt.Fprintf(p.w, "%q…%q", e.Begin.String, e.End.String)
+	case *Group:
+		fmt.Fprintf(p.w, "(")
+		p.format(e.Body)
+		fmt.Fprintf(p.w, ")")
+	case *Option:
+		fmt.Fprintf(p.w, "[")
+		p.format(e.Body)
+		fmt.Fprintf(p.w, "]")
+	case *Repetition:
+		fmt.Fprintf(p.w, "{")
+		p.format(e.Body)
+		fmt.Fprintf(p.w, "}")
+	}
+}
+
+func (p *printer) Format(prod *Production) {
+	fmt.Fprintf(p.w, "%s = ", prod.Name.String)
+	p.format(prod.Expr)
+	fmt.Fprintf(p.w, ".\n")
+}
+
+func Format(g Grammar) string {
+	b := strings.Builder{}
+	rules := make([]*Production, 0, len(g))
+	lexemes := make([]*Production, 0, len(g))
+
+	for name, prod := range g {
+		if IsLexical(name) {
+			lexemes = append(lexemes, prod)
+		} else {
+			rules = append(rules, prod)
+		}
+	}
+
+	sortProductions := func(s []*Production) {
+		sort.Slice(s, func(i, j int) bool {
+			a := s[i].Pos().Offset
+			b := s[j].Pos().Offset
+			return a < b
+		})
+	}
+	sortProductions(rules)
+	sortProductions(lexemes)
+
+	p := printer{w: &b}
+	for _, prod := range append(rules, lexemes...) {
+		p.Format(prod)
+	}
+
+	return b.String()
 }
