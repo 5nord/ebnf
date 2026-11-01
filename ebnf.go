@@ -273,7 +273,10 @@ func Verify(grammar Grammar, start string) error {
 	return v.errors.Err()
 }
 
-// First returns the first token set of a given expression
+// First returns the first token set of a given expression. A sequence
+// contributes every element up to and including the first one that cannot
+// match the empty string, so nullable prefixes such as options and
+// repetitions do not hide the tokens that follow them.
 func First(grammar Grammar, x Expression) []string {
 	ret := first(grammar, x, make(map[Expression]bool))
 	m := make(map[string]bool)
@@ -293,11 +296,11 @@ func first(grammar Grammar, x Expression, v map[Expression]bool) []string {
 		return []string{x.String}
 	case Sequence:
 		var ret []string
-		if len(x) > 0 {
-			ret = append(ret, first(grammar, x[0], v)...)
-		}
-		if _, ok := x[0].(*Option); ok && len(x) > 1 {
-			ret = append(ret, first(grammar, x[1], v)...)
+		for _, elem := range x {
+			ret = append(ret, first(grammar, elem, v)...)
+			if !nullable(grammar, elem, make(map[string]bool)) {
+				break
+			}
 		}
 		return ret
 	case *Name:
@@ -329,6 +332,52 @@ func first(grammar Grammar, x Expression, v map[Expression]bool) []string {
 	default:
 		log.Printf("first: unhandled expression type: %T\n", x)
 		return nil
+	}
+}
+
+// nullable reports whether x can match the empty string. A name that is
+// already being resolved is not nullable: a cycle is not evidence that the
+// production can be empty.
+func nullable(grammar Grammar, x Expression, pending map[string]bool) bool {
+	switch x := x.(type) {
+	case *Token, *Range:
+		return false
+	case *Option, *Repetition:
+		return true
+	case *Group:
+		return nullable(grammar, x.Body, pending)
+	case *Production:
+		if x.Expr == nil {
+			return true
+		}
+		return nullable(grammar, x.Expr, pending)
+	case Sequence:
+		for _, elem := range x {
+			if !nullable(grammar, elem, pending) {
+				return false
+			}
+		}
+		return true
+	case Alternative:
+		for _, alt := range x {
+			if nullable(grammar, alt, pending) {
+				return true
+			}
+		}
+		return false
+	case *Name:
+		if pending[x.String] {
+			return false
+		}
+		prod := grammar[x.String]
+		if prod == nil {
+			return false
+		}
+		pending[x.String] = true
+		defer delete(pending, x.String)
+		return nullable(grammar, prod, pending)
+	default:
+		return false
 	}
 }
 

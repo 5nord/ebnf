@@ -89,6 +89,53 @@ func TestFirst(t *testing.T) {
 	}
 }
 
+func TestFirstSkipsNullablePrefix(t *testing.T) {
+	tests := []struct {
+		grammar string
+		want    []string
+	}{
+		{
+			grammar: `S ::= [ "a" ] [ "b" ] "c" .`,
+			want:    []string{"a", "b", "c"},
+		},
+		{
+			grammar: `S ::= P "c" .
+			P ::= [ "a" ] .`,
+			want: []string{"a", "c"},
+		},
+		{
+			grammar: `S ::= { "a" } "b" .`,
+			want:    []string{"a", "b"},
+		},
+		{
+			grammar: `S ::= ( [ "a" ] ) "b" .`,
+			want:    []string{"a", "b"},
+		},
+		{
+			grammar: `S ::= P Q "c" .
+			P ::= "a" | [ "b" ] .
+			Q ::= { "d" } .`,
+			want: []string{"a", "b", "c", "d"},
+		},
+		{
+			// A cycle is not evidence of an empty production, so the
+			// sequence stops at the recursive name.
+			grammar: `S ::= S "a" .`,
+			want:    nil,
+		},
+	}
+	for _, test := range tests {
+		g := parse(t, test.grammar)
+		got := First(g, g["S"])
+		sort.Strings(got)
+		want := slices.Clone(test.want)
+		sort.Strings(want)
+		if slices.Compare(got, want) != 0 {
+			t.Errorf("First(%q): want=%v, got=%v", test.grammar, want, got)
+		}
+	}
+}
+
 func TestText(t *testing.T) {
 	src := `
 	E ::= [ T E ] .
